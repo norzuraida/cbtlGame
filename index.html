@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CBTL Coffee Catch ☕</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: Arial, Helvetica, sans-serif;
+    background: linear-gradient(135deg, #f7efe6, #eee4f7);
+    color: #4b3157;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 18px;
+  }
+  .card {
+    width: min(900px, 100%);
+    background: rgba(255,255,255,.94);
+    border-radius: 28px;
+    padding: 20px;
+    box-shadow: 0 18px 50px rgba(75,49,87,.18);
+    text-align: center;
+  }
+  h1 { margin: 4px 0 2px; font-size: clamp(28px, 7vw, 48px); }
+  .subtitle { margin: 0 0 14px; color: #8a6f92; }
+  .hud {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .stat {
+    background: #faf6fb;
+    border: 2px solid #eadcf0;
+    border-radius: 16px;
+    padding: 9px 5px;
+    font-weight: bold;
+  }
+  .stat span { display: block; font-size: 22px; margin-top: 2px; }
+  #game {
+    position: relative;
+    height: min(58vh, 500px);
+    min-height: 330px;
+    overflow: hidden;
+    border-radius: 22px;
+    border: 3px solid #b98bc4;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(255,255,255,.8) 0 3px, transparent 4px),
+      linear-gradient(#f9f1e9, #eee4f7);
+    cursor: crosshair;
+  }
+  .cup {
+    position: absolute;
+    width: 58px;
+    height: 58px;
+    border-radius: 16px 16px 22px 22px;
+    background: #fff;
+    border: 3px solid #7b4d89;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    user-select: none;
+    cursor: pointer;
+    filter: drop-shadow(0 5px 5px rgba(0,0,0,.12));
+    animation: bob .7s ease-in-out infinite alternate;
+  }
+  .cup::after {
+    content: "";
+    position: absolute;
+    right: -13px;
+    width: 15px;
+    height: 22px;
+    border: 3px solid #7b4d89;
+    border-left: 0;
+    border-radius: 0 12px 12px 0;
+  }
+  @keyframes bob { to { transform: translateY(-4px) rotate(2deg); } }
+  .bad {
+    background: #ffe7ee;
+    border-color: #d65d7c;
+  }
+  .bad::after { border-color: #d65d7c; }
+  .burst {
+    position: absolute;
+    pointer-events: none;
+    font-size: 24px;
+    animation: burst .45s forwards;
+    z-index: 5;
+  }
+  @keyframes burst {
+    from { opacity: 1; transform: scale(.6); }
+    to { opacity: 0; transform: scale(1.5) translateY(-25px); }
+  }
+  .controls { margin-top: 14px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  button {
+    border: 0;
+    border-radius: 999px;
+    padding: 12px 20px;
+    font-size: 16px;
+    font-weight: bold;
+    background: #74467f;
+    color: #fff;
+    cursor: pointer;
+  }
+  button.secondary { background: #d8c2dc; color: #4b3157; }
+  button:hover { transform: translateY(-1px); }
+  #message { min-height: 26px; margin: 12px 0 0; font-weight: bold; }
+  .small { font-size: 12px; color: #9b879f; margin-top: 10px; }
+  @media (max-width: 520px) {
+    .hud { grid-template-columns: repeat(2, 1fr); }
+    #game { min-height: 360px; }
+  }
+</style>
+</head>
+
+<body>
+<div class="card">
+  <h1>☕ CBTL Coffee Catch</h1>
+  <p class="subtitle">Catch the good cups • avoid the sleepy cups!</p>
+
+  <div class="hud">
+    <div class="stat">Level <span id="level">1</span></div>
+    <div class="stat">Score <span id="score">0</span></div>
+    <div class="stat">Lives <span id="lives">❤️❤️❤️</span></div>
+    <div class="stat">Time <span id="time">30</span>s</div>
+  </div>
+
+  <div id="game">
+    <div id="message">Press Start to begin your coffee run! ☕</div>
+  </div>
+
+  <div class="controls">
+    <button id="startBtn">Start Game</button>
+    <button id="soundBtn" class="secondary">🔊 Sound On</button>
+  </div>
+
+  <div class="small">Tip: Each level gets faster. Reach Level 5 for the Coffee Master title!</div>
+</div>
+
+<script>
+const game = document.getElementById("game");
+const levelEl = document.getElementById("level");
+const scoreEl = document.getElementById("score");
+const livesEl = document.getElementById("lives");
+const timeEl = document.getElementById("time");
+const messageEl = document.getElementById("message");
+const startBtn = document.getElementById("startBtn");
+const soundBtn = document.getElementById("soundBtn");
+
+let score = 0, lives = 3, level = 1, time = 30;
+let timer = null, spawnTimer = null, running = false, soundOn = true;
+let audioCtx = null;
+
+function sound(freq, duration=0.08, type="sine") {
+  if (!soundOn) return;
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(.05, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.001, audioCtx.currentTime + duration);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + duration);
+  } catch(e) {}
+}
+
+function updateHUD() {
+  levelEl.textContent = level;
+  scoreEl.textContent = score;
+  livesEl.textContent = "❤️".repeat(lives) + "🖤".repeat(3-lives);
+  timeEl.textContent = time;
+}
+
+function randomPosition(el) {
+  const maxX = Math.max(5, game.clientWidth - el.offsetWidth - 5);
+  const maxY = Math.max(55, game.clientHeight - el.offsetHeight - 5);
+  el.style.left = (5 + Math.random() * (maxX - 5)) + "px";
+  el.style.top = (55 + Math.random() * Math.max(1, maxY - 55)) + "px";
+}
+
+function burst(x, y, text) {
+  const b = document.createElement("div");
+  b.className = "burst";
+  b.textContent = text;
+  b.style.left = x + "px";
+  b.style.top = y + "px";
+  game.appendChild(b);
+  setTimeout(() => b.remove(), 450);
+}
+
+function spawnCup() {
+  if (!running) return;
+
+  const cup = document.createElement("div");
+  const good = Math.random() > Math.min(.22, .08 + level * .025);
+  cup.className = "cup" + (good ? "" : " bad");
+  cup.textContent = good ? "☕" : "💤";
+  cup.title = good ? "Catch me!" : "Avoid me!";
+  randomPosition(cup);
+
+  const lifetime = Math.max(850, 1900 - level * 160);
+  let removed = false;
+
+  cup.onclick = (e) => {
+    if (removed || !running) return;
+    removed = true;
+
+    const rect = game.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (good) {
+      score += 10 * level;
+      burst(x, y, "+☕");
+      sound(700, .08);
+      if (score >= level * 100) {
+        level++;
+        messageEl.textContent = level >= 5
+          ? "🏆 Coffee Master level!"
+          : "✨ Level up! Faster coffee incoming!";
+        sound(900, .15);
+      }
+    } else {
+      lives--;
+      burst(x, y, "💥");
+      sound(180, .16, "sawtooth");
+      if (lives <= 0) endGame("Out of lives! The coffee spilled! 😭");
+    }
+
+    cup.remove();
+    updateHUD();
+  };
+
+  game.appendChild(cup);
+
+  setTimeout(() => {
+    if (!removed && cup.isConnected) {
+      cup.remove();
+      if (good && running) {
+        lives--;
+        sound(150, .1, "sawtooth");
+        updateHUD();
+        if (lives <= 0) endGame("Too many missed coffees! 😭");
+      }
+    }
+  }, lifetime);
+}
+
+function startGame() {
+  clearInterval(timer);
+  clearInterval(spawnTimer);
+
+  score = 0; lives = 3; level = 1; time = 30; running = true;
+  game.querySelectorAll(".cup,.burst").forEach(x => x.remove());
+  messageEl.textContent = "Go go go! Catch those coffees! ☕";
+  startBtn.textContent = "Restart Game";
+  updateHUD();
+
+  timer = setInterval(() => {
+    time--;
+    updateHUD();
+    if (time <= 0) endGame("Time's up! 🎉 Final score: " + score);
+  }, 1000);
+
+  spawnTimer = setInterval(() => {
+    spawnCup();
+    if (level >= 3 && Math.random() > .45) setTimeout(spawnCup, 250);
+  }, 650);
+}
+
+function endGame(text) {
+  running = false;
+  clearInterval(timer);
+  clearInterval(spawnTimer);
+  game.querySelectorAll(".cup").forEach(x => x.remove());
+  messageEl.textContent = text;
+  sound(120, .25, "sawtooth");
+}
+
+startBtn.addEventListener("click", startGame);
+
+soundBtn.addEventListener("click", () => {
+  soundOn = !soundOn;
+  soundBtn.textContent = soundOn ? "🔊 Sound On" : "🔇 Sound Off";
+});
+
+updateHUD();
+</script>
+</body>
+</html>
